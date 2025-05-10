@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+python-dotenv
+google-generativeai
+logfire[fastapi,httpx]
+httpx
+python-multipart
+Pillow
+supabase
