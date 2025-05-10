@@ -40,10 +40,23 @@ async def start_session(
         response = await service.start_chat_session(request)
         logfire.info(f"Successfully started chat session: {response.session_id}")
         return response
+    except ValueError as ve:
+        error_message = str(ve)
+        logger.error(f"Value error starting chat session: {error_message}")
+        logfire.error(f"API Value Error starting chat session: {error_message}")
+        if "database" in error_message.lower() or "supabase" in error_message.lower():
+            # Database related error
+            raise HTTPException(status_code=500, 
+                                detail=f"Database error: {error_message}. Please check Supabase connection and configuration.")
+        else:
+            # Other validation errors
+            raise HTTPException(status_code=400, detail=error_message)
     except Exception as e:
-        logger.error(f"Error starting chat session: {e}", exc_info=True)
-        logfire.error(f"API Error starting chat session: {e!s}")
-        raise HTTPException(status_code=500, detail=str(e))
+        error_message = str(e)
+        logger.error(f"Error starting chat session: {error_message}", exc_info=True)
+        logfire.error(f"API Error starting chat session: {error_message}", exc_info=True)
+        raise HTTPException(status_code=500, 
+                           detail=f"Server error when starting chat session: {error_message}")
 
 @router.post("/send_message", summary="Send a message to a chat session")
 async def send_message_endpoint(

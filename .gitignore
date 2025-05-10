@@ -1,0 +1,58 @@
+/venv/
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# Test runner caches
+.tox/
+.nox/
+.pytest_cache/
+
+# Caches
+.cache/
+.mypy_cache/
+.ruff_cache/
+
+# Logs
+*.log
+pip-log.txt
+
+# IDEs / Editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS-specific
+.DS_Store
+
+# Environment variables (already covered by .env but good to be explicit if other patterns arise)
+# local_settings.py # if you ever use Django-like local settings 

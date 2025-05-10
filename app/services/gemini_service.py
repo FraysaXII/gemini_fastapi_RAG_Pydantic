@@ -124,9 +124,16 @@ class GeminiChatService:
                     }
                 )
                 
+                logfire.info(f"Creating session in Supabase with model: {request.model_name}")
                 supabase_response = await self.supabase.create_session(create_request)
                 if not supabase_response:
-                    raise ValueError("Failed to create session in database")
+                    error_msg = "Failed to create session in database - check Supabase logs for details"
+                    logfire.error(error_msg)
+                    raise ValueError(error_msg)
+                
+                # Use the session_id from Supabase
+                session_id = supabase_response.session_id
+                logfire.info(f"Successfully created session in Supabase with ID: {session_id}")
             else:
                 logfire.info("Running without Supabase persistence")
             
@@ -151,7 +158,13 @@ class GeminiChatService:
                 initial_message=None
             )
         except Exception as e:
-            logfire.error(f"Error starting chat session: {e}", exc_info=True)
+            # Capture full error information
+            error_msg = str(e)
+            logfire.error(f"Error starting chat session: {error_msg}", exc_info=True)
+            # Re-raise the same exception but with a clearer message for debugging
+            if "failed to create session" in error_msg.lower():
+                # Add diagnostic information to error message
+                raise ValueError(f"Database error: {error_msg}. Check Supabase connection and schema.")
             raise
 
     @logfire.instrument("Sending message to chat session", extract_args=True)
