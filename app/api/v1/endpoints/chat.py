@@ -26,7 +26,11 @@ def get_gemini_service():
     # logfire.attach_current_trace_to_logs() # If you want to link standard logs to logfire traces
     return GeminiChatService()
 
-@router.post("/start_session", response_model=StartChatResponse, summary="Start a new chat session")
+@router.post("/start_session", 
+            response_model=StartChatResponse, 
+            summary="Start a New Chat Session", 
+            description="Initializes a new chat session with the Gemini API. Users can optionally provide an initial history to set the context for the conversation, along with generation configurations and safety settings. A unique session ID is returned, which is used for subsequent interactions within the same conversation. If Supabase is configured, session metadata (excluding history for this initial call) will be persisted."
+)
 async def start_session(
     request: StartChatRequest = Body(...),
     service: GeminiChatService = Depends(get_gemini_service)
@@ -58,7 +62,10 @@ async def start_session(
         raise HTTPException(status_code=500, 
                            detail=f"Server error when starting chat session: {error_message}")
 
-@router.post("/send_message", summary="Send a message to a chat session")
+@router.post("/send_message", 
+            summary="Send a Message to a Chat Session",
+            description="Sends a message from the user to an existing chat session identified by `session_id`. \n\n- **Non-Streaming**: If `stream` is `False` (default), the full response from the Gemini model is returned after processing. Session history is updated if Supabase is configured.\n- **Streaming**: If `stream` is `True`, the response is streamed back as newline-delimited JSON objects (`StreamedMessagePart`). This is suitable for applications that want to display the response incrementally. The full interaction history is updated in Supabase (if configured) after the stream completes."
+)
 async def send_message_endpoint(
     request: SendMessageRequest = Body(...),
     service: GeminiChatService = Depends(get_gemini_service)
@@ -100,7 +107,11 @@ async def send_message_endpoint(
             logfire.error(f"API Error sending message: {e!s}", session_id=request.session_id)
             raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/history/{session_id}", response_model=GetHistoryResponse, summary="Get chat session history")
+@router.get("/history/{session_id}", 
+            response_model=GetHistoryResponse, 
+            summary="Get Chat Session History",
+            description="Retrieves the full conversation history for a given chat session ID. If Supabase is configured and the session exists, the persisted history is returned. Otherwise, it might reflect in-memory history or indicate that the session is not found."
+)
 async def get_history(
     session_id: str,
     service: GeminiChatService = Depends(get_gemini_service)
@@ -122,7 +133,11 @@ async def get_history(
         logfire.error(f"API Error getting history: {e!s}", session_id=session_id)
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.delete("/session/{session_id}", response_model=Dict[str, str], summary="Delete a chat session")
+@router.delete("/session/{session_id}", 
+             response_model=Dict[str, str], 
+             summary="Delete a Chat Session",
+             description="Deletes a specified chat session. This removes the session from the server\'s active memory and, if Supabase is configured, also deletes the corresponding record from the persistent database."
+)
 async def delete_session(
     session_id: str,
     service: GeminiChatService = Depends(get_gemini_service)

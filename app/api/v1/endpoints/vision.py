@@ -21,7 +21,15 @@ logger = logging.getLogger(__name__)
 def get_gemini_service():
     return GeminiChatService()
 
-@router.post("/generate_with_image", response_model=GeminiMessageResponse, summary="Generate content from text and image")
+@router.post("/generate_with_image", 
+            response_model=GeminiMessageResponse, 
+            summary="Generate Content from Image and Text",
+            description=(
+                "Generates content based on a provided image and an optional text prompt using a vision-capable Gemini model (e.g., 'gemini-pro-vision'). "
+                "The image should be uploaded as `image_file`. Optional parameters like `text_prompt`, `model_name`, `generation_config_json`, "
+                "and `safety_settings_json` can be provided as form fields. The response includes candidates with generated content, safety ratings, and other metadata from the Gemini API."
+            )
+)
 async def generate_with_image(
     image_file: UploadFile = File(..., description="The image file to process."),
     text_prompt: Optional[str] = Form(None, description="Text prompt to accompany the image."),
