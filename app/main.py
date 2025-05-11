@@ -1,7 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from dotenv import load_dotenv
 import logging
 import os
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+import logfire # type: ignore
 
 # Load environment variables from .env file early
 # This should be one of the first things your application does.
@@ -11,7 +14,6 @@ from app.core.config import settings
 from app.core.logging_config import setup_logging
 from app.api.v1.endpoints import chat as chat_router_v1
 from app.api.v1.endpoints import vision as vision_router_v1
-import logfire # type: ignore
 
 # Setup logging (including Logfire)
 # Must be called after load_dotenv() so settings are populated, 
@@ -61,6 +63,10 @@ async def shutdown_event():
 async def health_check():
     logfire.info("Health check endpoint called.")
     return {"status": "ok", "message": "Welcome to Gemini FastAPI Interface!"}
+
+@app.get("/", include_in_schema=False)
+async def root_redirect():
+    return RedirectResponse(url="/redoc")
 
 # To run this app (from the root directory `gemini_fastapi_RAG_Pydantic`):
 # Ensure you have a .env file with GEMINI_API_KEY
