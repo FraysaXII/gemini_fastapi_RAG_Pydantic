@@ -57,7 +57,7 @@ class StartChatRequest(BaseModel):
     initial_history: Optional[List[Content]] = Field(None, description="Optional initial history for the chat session.")
     generation_config: Optional[GenerationConfig] = Field(None, description="Optional generation configuration.")
     safety_settings: Optional[List[SafetySetting]] = Field(None, description="Optional safety settings.")
-    model_name: str = Field("gemini-pro", description="The model to use, e.g., 'gemini-pro' or 'gemini-1.5-pro-latest'.")
+    model_name: str = Field("gemini-2.5-pro-exp-03-25", description="The model to use, e.g., 'gemini-pro' or 'gemini-1.5-pro-latest'.")
 
 class StartChatResponse(BaseModel):
     session_id: str = Field(description="Unique identifier for the newly created chat session.")

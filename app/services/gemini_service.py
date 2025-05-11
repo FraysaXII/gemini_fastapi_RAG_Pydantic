@@ -172,52 +172,88 @@ class GeminiChatService:
         """Sends a message to an existing chat session."""
         try:
             # Get session from Supabase if available
-            session = None
+            session: Optional[SupabaseChatSession] = None # Type hint for clarity
             if self.supabase:
                 session = await self.supabase.get_session(request.session_id)
-                if not session:
-                    raise ValueError(f"Session {request.session_id} not found")
+                # No need to raise error here if session is None and not self.supabase,
+                # the logic below will handle it when trying to find sdk_chat_object
+
+            # Get or create SDK chat object
+            chat_session_data = self._active_chat_sessions.get(request.session_id)
+            sdk_chat_object: Optional[GeminiChatSessionInternal] = None
+
+            if chat_session_data:
+                sdk_chat_object = chat_session_data["session"]
             
-            # Get or create chat object
-            chat = self._active_chat_sessions.get(request.session_id)
-            if not chat:
-                if session:
-                    chat = self._create_chat_session(session.model_name, session.history)
+            if not sdk_chat_object:
+                if session: # session is from Supabase
+                    logfire.info(f"Reconstructing SDK chat session for {request.session_id} from Supabase history.")
+                    sdk_chat_object = self._create_chat_session(session.model_name, session.history) # session.history is List[Dict]
+                    self._active_chat_sessions[request.session_id] = {"session": sdk_chat_object, "model_name": session.model_name}
                 else:
-                    raise ValueError(f"Session {request.session_id} not found")
-                self._active_chat_sessions[request.session_id] = chat
+                    logfire.error(f"Session {request.session_id} not found in memory and no Supabase session to reconstruct from.")
+                    raise ValueError(f"Session {request.session_id} not found or could not be reconstructed.")
             
-            # Convert message to dictionary
-            message_dict = {
-                "parts": [{"text": part.text} if part.text is not None else part.model_dump() for part in request.message.parts],
-                "role": request.message.role
-            }
+            # Convert Pydantic user message to a dictionary suitable for the SDK and database
+            user_message_for_sdk_and_db = request.message.model_dump(exclude_none=True)
+
+            # Convert Pydantic GenerationConfig and SafetySettings to SDK dicts
+            sdk_generation_config: Optional[GenerationConfigDict] = None
+            if request.generation_config:
+                sdk_generation_config = cast(GenerationConfigDict, request.generation_config.model_dump(exclude_none=True))
+            
+            sdk_safety_settings: Optional[List[SafetySettingDict]] = None
+            if request.safety_settings:
+                sdk_safety_settings = cast(List[SafetySettingDict], [s.model_dump() for s in request.safety_settings])
             
             # Send message to Gemini
-            response = chat.send_message(
-                message_dict,
-                generation_config=request.generation_config.model_dump() if request.generation_config else None,
-                safety_settings=[s.model_dump() for s in request.safety_settings] if request.safety_settings else None
+            sdk_gemini_response = sdk_chat_object.send_message(
+                content=user_message_for_sdk_and_db,
+                generation_config=sdk_generation_config,
+                safety_settings=sdk_safety_settings
             )
             
-            # Convert response to dictionary
-            response_dict = {
-                "parts": [{"text": part.text} for part in response.parts],
-                "role": response.role
-            }
+            # Process the Gemini SDK response to extract model's content
+            model_response_pydantic_parts: List[PydanticPart] = []
+            model_response_role: str = "model" # Default role for model's response
+
+            if sdk_gemini_response.candidates:
+                first_candidate = sdk_gemini_response.candidates[0]
+                if first_candidate.content:
+                    if first_candidate.content.parts:
+                        model_response_pydantic_parts = [PydanticPart(text=part.text) for part in first_candidate.content.parts if hasattr(part, 'text')]
+                    if first_candidate.content.role:
+                        model_response_role = first_candidate.content.role
+            elif sdk_gemini_response.prompt_feedback and sdk_gemini_response.prompt_feedback.block_reason:
+                block_reason_msg = sdk_gemini_response.prompt_feedback.block_reason_message or sdk_gemini_response.prompt_feedback.block_reason.name
+                model_response_pydantic_parts = [PydanticPart(text=f"Message blocked by safety filter: {block_reason_msg}")]
+                logfire.warn(f"Gemini response for session {request.session_id} blocked by safety filter: {block_reason_msg}")
+            else:
+                model_response_pydantic_parts = [PydanticPart(text="[No content generated or an unexpected error occurred]")]
+                logfire.warn(f"Gemini response for session {request.session_id} had no candidates and no explicit block reason.", sdk_response_details=str(sdk_gemini_response))
+
+            model_response_as_pydantic_content = PydanticContent(parts=model_response_pydantic_parts, role=model_response_role)
             
             # Update history in Supabase if available
-            if self.supabase:
-                new_history = (session.history if session else []) + [message_dict, response_dict]
-                update_request = UpdateSessionRequest(history=new_history)
-                updated_session = await self.supabase.update_session_history(request.session_id, update_request)
-                if not updated_session:
-                    raise ValueError("Failed to update session history")
+            if self.supabase and session: # ensure session is the one from Supabase
+                model_response_as_dict_for_db = model_response_as_pydantic_content.model_dump(exclude_none=True)
+                # session.history is List[Dict], user_message_for_sdk_and_db is Dict
+                new_history_for_db = session.history + [user_message_for_sdk_and_db, model_response_as_dict_for_db]
+                
+                update_data = UpdateSessionRequest(history=new_history_for_db)
+                # Optionally update model_name or metadata if they can change per message
+                # For now, only history is updated based on the current model.
+                
+                updated_session_from_db = await self.supabase.update_session_history(request.session_id, update_data)
+                if not updated_session_from_db:
+                    # Log warning but don't necessarily fail the whole operation if DB update fails,
+                    # unless strict DB consistency is required. For now, just log.
+                    logfire.error(f"Failed to update session history in Supabase for session {request.session_id}")
             
             return MessageResponse(
                 session_id=request.session_id,
-                response=Content(**response_dict),
-                updated_history=[Content(**msg) for msg in [message_dict, response_dict]]
+                response=model_response_as_pydantic_content,
+                updated_history=[request.message, model_response_as_pydantic_content] # Current turn: user message + model response
             )
         except Exception as e:
             logfire.error(f"Error sending message: {e}", exc_info=True)

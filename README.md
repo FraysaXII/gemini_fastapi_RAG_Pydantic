@@ -139,6 +139,80 @@ All vision endpoints are prefixed with `/api/v1/vision`.
         -   `safety_settings_json` (form field, optional): JSON string of a list of `SafetySetting`.
     -   **Response**: `PydanticGeminiResponse` (includes candidates with generated content, safety ratings, etc.).
 
+## Testing the API
+
+Once the application is running, you can interactively test its functionality using the built-in Swagger UI documentation.
+
+1.  **Start the application:**
+    ```bash
+    uvicorn app.main:app --reload
+    ```
+2.  **Access Swagger UI:** Open your browser and navigate to `http://127.0.0.1:8000/docs`.
+
+### General Guidelines for Swagger UI Testing:
+
+*   **Explore Endpoints:** Endpoints are grouped by tags (e.g., "Chat V1", "Vision V1"). Expand a group to see individual endpoints.
+*   **"Try it out":** Click this button on an endpoint to make its parameters and request body editable.
+*   **Parameters & Request Body:**
+    *   Fill in any required path or query parameters.
+    *   For `POST`/`PUT` requests, provide a JSON request body. The expected structure (schema) for the request body is shown. You can also find all model schemas at the bottom of the `/docs` page.
+*   **Execute:** Click the "Execute" button to send the request to your running application.
+*   **Responses:** Observe the HTTP status code, response body, and response headers. Error messages will typically be in the response body under a `detail` field.
+*   **`session_id` Management:** For chat operations, you'll first need to call `POST /api/v1/chat/start_session` to get a `session_id`. Use this `session_id` for subsequent calls to `send_message`, `get_history`, and `delete_session`.
+
+### Example Test Flows:
+
+#### Testing Chat Functionality:
+
+1.  **Start a Session:**
+    *   Go to `POST /api/v1/chat/start_session`.
+    *   Click "Try it out".
+    *   Provide a request body, e.g.:
+        ```json
+        {
+          "model_name": "gemini-pro"
+        }
+        ```
+    *   Execute and copy the `session_id` from the response.
+2.  **Send a Message:**
+    *   Go to `POST /api/v1/chat/send_message`.
+    *   Click "Try it out".
+    *   Use the `session_id` from step 1. Provide a message:
+        ```json
+        {
+          "session_id": "your-copied-session-id",
+          "message": {
+            "parts": [{"text": "Hello, what can you do?"}],
+            "role": "user"
+          },
+          "stream": false
+        }
+        ```
+    *   Execute and check the model's response.
+3.  **Get History:**
+    *   Go to `GET /api/v1/chat/history/{session_id}`.
+    *   Click "Try it out".
+    *   Enter the `session_id`.
+    *   Execute and review the conversation history.
+4.  **Delete Session:**
+    *   Go to `DELETE /api/v1/chat/session/{session_id}`.
+    *   Click "Try it out".
+    *   Enter the `session_id`.
+    *   Execute. Subsequent calls for this session should fail (e.g., 404).
+
+#### Testing Vision Functionality:
+
+1.  **Generate with Image:**
+    *   Go to `POST /api/v1/vision/generate_with_image`.
+    *   Click "Try it out".
+    *   **`image_file`**: Click "Choose File" and upload an image.
+    *   **`model_name`**: Enter a vision model, e.g., `"gemini-pro-vision"`.
+    *   **`text_prompt`** (optional): e.g., `"What objects are in this picture?"`.
+    *   **`generation_config_json`** (optional): e.g., `{"temperature": 0.6}`.
+    *   Execute and examine the `candidates` in the response.
+
+Refer to the schemas provided in the Swagger UI for detailed information on request and response models.
+
 ## Logging and Observability
 
 This application employs a unified logging strategy centered around Pydantic Logfire for comprehensive and structured observability.
